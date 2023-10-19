@@ -109,6 +109,8 @@ class Spec extends SpecBase {
   test(shadowedIds(Expr("{ val x = 42; val x = x + 1; x * 2 } + { val y = 3; val y = x * 3; y }")), Set("x", "y"))
   test(shadowedIds(Expr("{ val x = 10; val x = 3; y * { val y = 7; x + c * b } } + { val a = d; a }")), Set("x"))
   test(shadowedIds(Expr("{ val x = 8; val x = 3; y * { val y = 7; x + c * b } } + { val a = d; z }")), Set("x"))
-
+  // what is correct in next case
+  //test(shadowedIds(Expr("val x = 1; val x = 2; y")), Set("x"))
+  //test(shadowedIds(Expr("val x = 1; val x = 2; y")), Set(""))
   /* Write your own tests */
 }
