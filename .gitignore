@@ -1,1 +1,5 @@
+# mac finder 
 .DS_Store
+
+# sbt
+**/.bsp/
