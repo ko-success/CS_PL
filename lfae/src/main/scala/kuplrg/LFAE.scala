@@ -37,12 +37,16 @@ enum Value:
   case CloV(param: String, body: Expr, env: Env)
   // expression values
   case ExprV(expr: Expr, env: Env)
+  // for call-by-need
+  case ExprVN(expr: Expr, env: Env, value: Option[Value])
 
   // the string form of a value
   def str: String = this match
     case NumV(n)       => n.toString
     case CloV(_, _, _) => "<function>"
     case ExprV(_, _)   => "<expr>"
+    case ExprVN(_, _, _)   => "<expr>"
+
 
 // -----------------------------------------------------------------------------
 // Parsers
