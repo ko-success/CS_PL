@@ -47,6 +47,8 @@ object Implementation extends Template {
       case (NilV, tv) => error(s"invalid operation: ${NilV.str} :: ${tv.str}")
       case (hv, ConsV(ht, tt))  => ConsV(hv, ConsV(ht, tt))
       case (hv, NilV)           => ConsV(hv, NilV)
+      // new code - error handling
+      case v                    => error(s"not a list: ${v}")
     case EHead(l)           => interp(l, env) match
       case ConsV(h, t)  => h
       case NilV         => error(s"empty list: ${NilV.str}")
@@ -56,24 +58,37 @@ object Implementation extends Template {
       case NilV         => error(s"empty list: ${NilV.str}")
       case v            => error(s"not a list: ${v.str}")
     case ELength(l)         => NumV(length(interp(l, env)))
-    case EMap(l, f)         => interp(f, env) match
-      case CloV(p, b, e)  => interp(l, env) match
-        case ConsV(h, t)  => map(ConsV(h, t), CloV(p, b, e))
-        case NilV         => map(NilV, CloV(p, b, e))
-        case v            => error(s"not a list: ${v.str}")
-      case v                  => error(s"not a function: ${v.str}")
-    case EFlatMap(l, f)     => interp(f, env) match
-      case CloV(p, b, e)  => interp(l, env) match
-        case ConsV(h, t)  => join(map(ConsV(h, t), CloV(p, b, e)))
-        case NilV         => join(map(NilV, CloV(p, b, e)))
-        case v            => error(s"not a list: ${v.str}")
-      case v                  => error(s"not a function: ${v.str}")
-    case EFilter(l, f)      =>interp(f, env) match
-      case CloV(p, b, e)  => interp(l, env) match
-        case ConsV(h, t)  => filter(ConsV(h, t), CloV(p, b, e))
-        case NilV         => filter(NilV, CloV(p, b, e))
-        case v            => error(s"not a list: ${v.str}")
-      case v                  => error(s"not a function: ${v.str}")
+    // modify error handling precedence
+    case EMap(l, f)         => interp(l, env) match
+      case ConsV(h, t)  => map(ConsV(h, t), interp(f, env))
+      case NilV         => map(NilV, interp(f, env))
+      case v            => error(s"not a list: ${v.str}")
+        // case EMap(l, f)         => interp(f, env) match
+    //   case CloV(p, b, e)  => interp(l, env) match
+    //     case ConsV(h, t)  => map(ConsV(h, t), CloV(p, b, e))
+    //     case NilV         => map(NilV, CloV(p, b, e))
+    //     case v            => error(s"not a list: ${v.str}")
+    //   case v                  => error(s"not a function: ${v.str}")
+    case EFlatMap(l, f)     => interp(l, env) match
+      case ConsV(h, t)  => join(map(ConsV(h, t), interp(f, env)))
+      case NilV         => join(map(NilV, interp(f, env)))
+      case v            => error(s"not a list: ${v.str}")
+    // case EFlatMap(l, f)     => interp(f, env) match
+    //   case CloV(p, b, e)  => interp(l, env) match
+    //     case ConsV(h, t)  => join(map(ConsV(h, t), CloV(p, b, e)))
+    //     case NilV         => join(map(NilV, CloV(p, b, e)))
+    //     case v            => error(s"not a list: ${v.str}")
+    //   case v                  => error(s"not a function: ${v.str}")
+    case EFilter(l, f)     => interp(l, env) match
+      case ConsV(h, t)  => filter(ConsV(h, t), interp(f, env))
+      case NilV         => filter(NilV, interp(f, env))
+      case v            => error(s"not a list: ${v.str}")
+    // case EFilter(l, f)      =>interp(f, env) match
+    //   case CloV(p, b, e)  => interp(l, env) match
+    //     case ConsV(h, t)  => filter(ConsV(h, t), CloV(p, b, e))
+    //     case NilV         => filter(NilV, CloV(p, b, e))
+    //     case v            => error(s"not a list: ${v.str}")
+    //   case v                  => error(s"not a function: ${v.str}")
     case ETuple(es)         => es.length match
       case 0  => UnitV
       case _  => TupleV(es.map(e => interp(e, env)))
@@ -84,7 +99,6 @@ object Implementation extends Template {
       case _          => error(s"not a tuple: ${t.str}")
     case EVal(n, v, s)      => interp(s, env + (n -> interp(v, env)))
     case EFun(ps, b)        => CloV(ps, b, () => env)
-  // mutually recursive function
     case ERec(ds, s)        => 
       lazy val renv: Env = ds.foldLeft(env){case (e, FunDef(n, ps, b)) => e + (n -> CloV(ps, b, (() => renv)))}
       interp(s, renv)
@@ -111,25 +125,44 @@ object Implementation extends Template {
       case NilV         => 0
       case _            => error(s"not a list: ${list.str}")
 
-  def map(list: Value, fun: Value): Value = (list, fun) match
-    case (ConsV(h, t), f) => ConsV(app(f, List(h)), map(t, f))
-    case (NilV, _)                    => NilV
-    case (_, _)                       =>
-      error(s"invalid operation: ${fun.str}(${list.str})")
-
   def join(list: Value): Value = list match
     case ConsV(ConsV(hh, th), t)  => ConsV(hh, join(ConsV(th, t)))
     case ConsV(NilV, t)           => join(t)
     case NilV                     => NilV
+      // new code - error handling
+    case ConsV(t, NilV)           => error(s"not a list: ${list.str}")
 
+  // modify error handling precedence
+  def map(list: Value, fun: Value): Value = (list, fun) match
+    case (ConsV(h, t), CloV(p, b, e)) => ConsV(app(fun, List(h)), map(t, fun))
+    case (NilV, _)                    => NilV
+    case (ConsV(h, t), v)             => error(s"not a function: ${v.str}")
+    case (_,_)                        => 
+      error(s"invalid operation: ${fun.str}(${list.str})")
+  // def map(list: Value, fun: Value): Value = (list, fun) match
+  //   case (ConsV(h, t), f) => ConsV(app(f, List(h)), map(t, f))
+  //   case (NilV, _)                    => NilV
+  //   case (_, _)                       =>
+  //     error(s"invalid operation: ${fun.str}(${list.str})")
+
+  // modify error handling precedence
   def filter(list: Value, fun: Value): Value = (list, fun) match
-    case (ConsV(h, t), f) => app(f, List(h)) match
-      case BoolV(true)  => ConsV(h, filter(t, f))
-      case BoolV(false) => filter(t, f)
+    case (ConsV(h, t), CloV(p, b, e)) => app(fun, List(h)) match
+      case BoolV(true)  => ConsV(h, filter(t, fun))
+      case BoolV(false) => filter(t, fun)
       case v            => error(s"not a boolean: ${v.str}")
     case (NilV, _)                    => NilV
+    case (ConsV(h, t), v)             => error(s"not a function: ${v.str}")
     case (_, _)                       =>
       error(s"invalid operation: ${fun.str}(${list.str})")
+  // def filter(list: Value, fun: Value): Value = (list, fun) match
+  //   case (ConsV(h, t), f) => app(f, List(h)) match
+  //     case BoolV(true)  => ConsV(h, filter(t, f))
+  //     case BoolV(false) => filter(t, f)
+  //     case v            => error(s"not a boolean: ${v.str}")
+  //   case (NilV, _)                    => NilV
+  //   case (_, _)                       =>
+  //     error(s"invalid operation: ${fun.str}(${list.str})")
 
   def app(fun: Value, args: List[Value]): Value = fun match
     case CloV(p, b, env)  =>

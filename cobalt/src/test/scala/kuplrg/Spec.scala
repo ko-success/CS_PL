@@ -320,4 +320,40 @@ class Spec extends SpecBase {
   test(eval(expr20), "List(List((), ()), List(1, ()), List(1, 2), List(1, 2))")
 
   /* Write your own tests */
+  testExc(eval("1 :: 2"), "not a list")
+  testExc(eval("2 :: true"), "not a list")
+
+  test(eval("List(1) == List(1, true)"), "false")
+  test(eval("List(1, 2, 3) == List(2, true)"), "false")
+  testExc(eval("List(1, 2) == List(true)"), "invalid operation")
+  testExc(eval("List(1, 2) == List(1, true)"), "invalid operation")
+
+  test(eval("List().map(42)"), "List()")
+  test(eval("List().flatMap(42)"), "List()")
+  test(eval("List().filter(42)"), "List()")
+
+  testExc(eval("List().map(x)"), "free identifier")
+  testExc(eval("List().flatMap(x)"), "free identifier")
+  testExc(eval("List().filter(x)"), "free identifier")
+
+  testExc(eval("List(1, 2, 3).map(List())"), "not a function")
+  testExc(eval("List(1, 2, 3).flatMap(true)"), "not a function")
+  testExc(eval("List(1, 2, 3).filter(42)"), "not a function")
+
+  testExc(eval("List(1).flatMap(x => x)"), "not a list")
+  testExc(eval("List(1).flatMap(x => true)"), "not a list")
+
+  test(eval("(1, 2) == (3, true)"), "false")
+  test(eval("(1, 2, 3) == (2, 3, true)"), "false")
+  testExc(eval("(1, 2, 3) == (true)"), "invalid operation")
+  testExc(eval("(1, 2, 3) == (1, 2, true)"), "invalid operation")
+
+  testExc(eval("(1, x)._1"), "free identifier")
+  testExc(eval("(1, 2, x)._1"), "free identifier")
+
+  test(eval("(1, true)._2"), "true")
+  test(eval("(1, 2, 3)._3"), "3")
+
+  /// join test
+  test(eval("List(1, 2).map(x => true)"), "List(true, true)")
 }
