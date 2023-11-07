@@ -69,7 +69,7 @@ object Implementation extends Template {
         numMulN(sl, sr)
     case Id(x)          => env.getOrElse(x, error(s"free identifier: $x"))
     case Fun(p, b)      => CloV(p, b, env)
-    case App(f, e)      => strictN(interpN(f, env)) match
+    case App(f, e)      =>  (interpN(f, env)) match
       case ExprVN(e, env, Some(c)) => c match
         case CloV(p, b, fenv) => interpN(b, fenv + (p -> ExprVN(e, env, None)))
       case CloV(p, b, fenv) => interpN(b, fenv + (p -> ExprVN(e, env, None)))

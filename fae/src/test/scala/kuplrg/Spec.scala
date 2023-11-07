@@ -155,6 +155,14 @@ class Spec extends SpecBase {
     })(n => x => x + n)
   """
 
+  val expr21 = """
+    (f => {
+      (x => {
+        f(4)(5)
+      })(3)
+    })(x => y => x * y)
+  """
+
   // -------------------------------------------------------------------------
   // interp (static scoping)
   // -------------------------------------------------------------------------
@@ -214,4 +222,6 @@ class Spec extends SpecBase {
   test(evalDS(expr20), "15")
 
   /* Write your own tests */
+  test(evalDS(expr21), "20")
+
 }

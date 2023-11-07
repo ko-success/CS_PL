@@ -30,6 +30,10 @@ object Implementation extends Template {
     case Id(x)          => env.getOrElse(x, error(s"free identifier: $x"))
     case Fun(p, b)      => CloV(p, b, env)
     case App(f, e)      => interpDS(f, env) match
-      case CloV(p, b, _) => interpDS(b, env + (p -> interpDS(e, env)))
+      case CloV(p, b, _) => 
+        println(env)
+        val fenv = env + (p -> interpDS(e, env))
+        println(fenv)
+        interpDS(b, fenv)
       case v => error(s"not a function: ${v.str}")
 }
