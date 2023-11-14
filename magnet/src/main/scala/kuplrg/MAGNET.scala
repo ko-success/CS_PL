@@ -95,6 +95,7 @@ case class State(cont: Cont, stack: Stack, handler: Handler, mem: Mem):
   def str: String =
     val memList = mem.toList.sortBy(_._1)
     val hdlList = handler.toList.sortBy(_._1.str)
+    // |* handler: ${hdlList.map((c, kv) => s"\n  - ${c.str} -> ${(kv.cont.map(_.str) :+ "[]").mkString(" :: ")}").mkString}
     s"""
     |* cont   : ${(cont.map(_.str) :+ "[]").mkString(" :: ")}
     |* stack  : ${(stack.map(_.str) :+ "[]").mkString(" :: ")}
@@ -146,14 +147,14 @@ enum Inst:
 
   // the string form of a continuation
   def str: String = this match
-    case IEval(_, e)    => s"eval[_ |- ${e.str}]"
+    case IEval(env, e)  => s"eval[<${env.mkString(", ")}>|- ${e.str}]"
     case IAdd           => s"(+)"
     case IMul           => s"(*)"
     case IDiv           => s"(/)"
     case IMod           => s"(%)"
     case IEq            => s"(==)"
     case ILt            => s"(<)"
-    case IDef(xs, _, b) => s"var[${xs.mkString(", ")}][_ |- ${b.str}]"
+    case IDef(xs, env, b) => s"var[${xs.mkString(", ")}][<${env.mkString(", ")}>|- ${b.str}]"
     case IWrite(a)      => s"write[#$a]"
     case IPop           => s"pop"
     case IJmpIf(_)      => s"jmp-if[_]"
@@ -193,9 +194,9 @@ enum Value:
     case NumV(n)       => n.toString
     case BoolV(b)      => b.toString
     case CloV(_, _, _) => s"<function>"
-    case ContV(_)      => s"<continuation>"
+    case ContV(kv)      => s"<continuation_${(kv.cont.map(_.str) :+ "[]").mkString(" :: ")}>"
     case GenV(_, _, _) => s"<generator>"
-    case IterV(_)      => s"<iterator>"
+    case IterV(a)      => s"<iterator_${a}>"
     case ResultV(v, b) => s"{ value: ${v.str}, done: $b }"
 
 // control handlers
@@ -221,6 +222,11 @@ enum Control:
 
 // continuation values
 case class KValue(cont: Cont, stack: Stack, handler: Handler)
+  // the string form of a KValue
+  def str: String =
+    // val hdlList = handler.toList.sortBy(_._1.str)
+    //s""${(cont.map(_.str) :+ "[]").mkString(" :: ")}"" //, ${(stack.map(_.str) :+ "[]").mkString(" :: ")}, ${hdlList.map((c, kv) => s"\n  - ${c.str} -> ${(kv.cont.map(_.str) :+ "[]").mkString(" :: ")}").mkString} ""
+    "KValue"
 
 // memories
 type Mem = Map[Addr, Value]
