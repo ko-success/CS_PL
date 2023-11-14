@@ -157,7 +157,9 @@ enum Inst:
     case IDef(xs, env, b) => s"var[${xs.mkString(", ")}][<${env.mkString(", ")}>|- ${b.str}]"
     case IWrite(a)      => s"write[#$a]"
     case IPop           => s"pop"
-    case IJmpIf(_)      => s"jmp-if[_]"
+    case IJmpIf(v)      => v match
+      case KValue(c, s, h)  => s"jmp-if[${(c.map(_.str) :+ "[]").mkString(" :: ")}]"
+      case _                => s"jmp-if[_]"
     case IJmp(c)        => s"jmp[${c.str}]"
     case ICall(n)       => s"call[$n]"
     case IReturn        => s"return"
@@ -199,6 +201,16 @@ enum Value:
     case IterV(a)      => s"<iterator_${a}>"
     case ResultV(v, b) => s"{ value: ${v.str}, done: $b }"
 
+  def typeStr: String = this match
+    case UndefV        => "UndefV"
+    case NumV(_)       => "NumV"
+    case BoolV(_)      => "BoolV"
+    case CloV(_, _, _) => "CloV"
+    case ContV(_)      => "ContV"
+    case GenV(_, _, _) => "GenV"
+    case IterV(_)      => "IterV"
+    case ResultV(_, _) => "ResultV"
+
 // control handlers
 type Handler = Map[Control, KValue]
 
@@ -227,6 +239,7 @@ case class KValue(cont: Cont, stack: Stack, handler: Handler)
     // val hdlList = handler.toList.sortBy(_._1.str)
     //s""${(cont.map(_.str) :+ "[]").mkString(" :: ")}"" //, ${(stack.map(_.str) :+ "[]").mkString(" :: ")}, ${hdlList.map((c, kv) => s"\n  - ${c.str} -> ${(kv.cont.map(_.str) :+ "[]").mkString(" :: ")}").mkString} ""
     "KValue"
+  def typeStr: String = "KValue"
 
 // memories
 type Mem = Map[Addr, Value]

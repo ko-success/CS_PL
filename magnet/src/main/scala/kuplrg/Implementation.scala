@@ -46,12 +46,12 @@ object Implementation extends Template {
 
       // condtional & loop Eval
       case EIf(cond, thenE, elseE)    => 
-        val ifCont:KValue = KValue(IEval(env, thenE) :: cont, stack, handler)
+        val ifCont: KValue = KValue(IEval(env, thenE) :: cont, stack, handler)
         State(IEval(env, cond) :: IJmpIf(ifCont) :: IEval(env, elseE) :: cont, stack, handler, memory)
       case EWhile(cond, body)         => 
         val breakCont: KValue = KValue(cont, stack, handler)
         val continueCont: KValue = KValue(IPop :: IEval(env, EWhile(cond, body)) :: cont, stack, handler)
-        val whileHandler: Handler = handler + (Continue -> continueCont) + (Break -> breakCont) // 연속으로 추가하는게 가능한건가?
+        val whileHandler: Handler = handler + (Continue -> continueCont) + (Break -> breakCont)
         val whileCont: KValue = KValue(IEval(env, body) :: IJmp(Continue) :: Nil, stack, whileHandler)
         State(IEval(env, cond) :: IJmpIf(whileCont) :: cont, UndefV :: stack, handler, memory)
       case EBreak                     => State(IJmp(Break) :: Nil, UndefV :: stack, handler, memory)
@@ -88,10 +88,10 @@ object Implementation extends Template {
     case State(IAdd :: cont, n2 :: n1 :: stack, handler, memory)              => State(cont, numAdd(n1, n2) :: stack, handler, memory)
     case State(IMul :: cont, n2 :: n1 :: stack, handler, memory)              => State(cont, numMul(n1, n2) :: stack, handler, memory)
     case State(IDiv :: cont, n2 :: n1 :: stack, handler, memory)              => n2 match
-      case NumV(0)  => error(s"invalid operation: ${n2.str} % 0")
+      case NumV(0)  => error(s"invalid operation: ${n1.str} / 0")
       case v        => State(cont, numDiv(n1, n2) :: stack, handler, memory)
     case State(IMod :: cont, n2 :: n1 :: stack, handler, memory)              => n2 match
-      case NumV(0)  => error(s"invalid operation: ${n2.str} % 0")
+      case NumV(0)  => error(s"invalid operation: ${n1.str} % 0")
       case v        => State(cont, numMod(n1, n2) :: stack, handler, memory)
     case State(IEq :: cont, v2 :: v1 :: stack, handler, memory)               => State(cont, BoolV(eq(v1, v2)) :: stack, handler, memory)
     case State(ILt :: cont, n2 :: n1 :: stack, handler, memory)               => State(cont, numLt(n1, n2) :: stack, handler, memory)
@@ -105,25 +105,25 @@ object Implementation extends Template {
         val newEnv: Env = env ++ xs.zip(addrList).toMap
         val newMemory: Mem = memory ++ addrList.zip(valList.reverse).toMap
         State(IEval(newEnv, body) :: cont, restStack, handler, newMemory)
-      else error()
-    case State(IWrite(addr) :: cont, v :: stack, handler, memory)             => State(cont, v :: stack, handler, memory + (addr -> v))
+      else error(s"can't match params and args ")
+    case State(IWrite(addr) :: cont, v :: stack, handler, memory)             => State(cont, v :: stack, handler, memory + (addr -> v)) // a가 mem에 꼭 malloc 되어야하나?
     case State(IPop :: cont, v :: stack, handler, memory)                     => State(cont, stack, handler, memory)
 
     // control flow instructions
     case State(IJmpIf(kv) :: cont , condV :: stack, handler, memory)          => condV match
       case BoolV(true)  => 
-        val KValue(jmpCont, jmpStack, jmpHandler) = kv
+        val KValue(jmpCont, jmpStack, jmpHandler) = kv // checkTypeOfCont(kv, "KValue")
         State(jmpCont, jmpStack, jmpHandler, memory)
       case BoolV(false) => State(cont, stack, handler, memory) // false일 경우 IJmpIf(kv)의 kv가 뭔지 계산도 안함에 유의
-      case _            => error() // boolean error
+      case _            => error(s"boolean error")
     case State(IJmp(control) :: cont, v :: stack, handler, memory)                 => 
       val KValue(jmpCont, jmpStack, jmpHandler) = lookup(handler, control)
-      val yieldHandler: Handler = handler.getOrElse(Yield, Nil) match // 이게 되는건가?
+      val yieldHandler: Handler = handler.getOrElse(Yield, Nil) match
         case Nil        => jmpHandler
         case kv: KValue => jmpHandler + (Yield -> kv)
       State(jmpCont, v :: jmpStack, yieldHandler, memory)
 
-    // functionc call & return instructions
+    // function call & return instructions
     case State(ICall(argSize) :: cont, stack, handler, memory)                => 
       if(stack.length > argSize) // 이거가 필요할까?
         val valList: Stack = stack.take(argSize)
@@ -163,6 +163,7 @@ object Implementation extends Template {
       State(yCont, ResultV(v1, b) :: yStack, yHandler, memory + (a -> v2))
     case State(IValueField :: cont, ResultV(v, _) :: stack, handler, memory)  => State(cont, v :: stack, handler, memory)
     case State(IDoneField :: cont, ResultV(_, b) :: stack, handler, memory)   => State(cont, BoolV(b) :: stack, handler, memory) // b가 Boolv인지 check해야하나?
+    case s                                                                    => error(s"no matching state \n${s.str}")
 
   // ---------------------------------------------------------------------------
   // Problem #2
@@ -186,6 +187,11 @@ object Implementation extends Template {
 
   def lookup(handler: Handler, x: Control): KValue =
     handler.getOrElse(x, error(s"invalid control operation: $x"))
+
+  def checkTypeOfValue(x: Value, t: String) =
+    if(x.typeStr == t) x else error("invalid type")
+  // def checkTypeOfCont(x: KValue) =
+  //   if(x.typeStr == "KValue") x else error("invalid type")
 
   def eq(l: Value, r: Value): Boolean = (l, r) match
     case (UndefV, UndefV) => true
