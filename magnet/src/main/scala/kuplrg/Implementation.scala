@@ -191,8 +191,8 @@ object Implementation extends Template {
   def lookup(handler: Handler, x: Control): KValue =
     handler.getOrElse(x, error(s"invalid control operation: $x"))
 
-  def checkTypeOfValue(x: Value, t: String) =
-    if(x.typeStr == t) x else error("invalid type")
+  // def checkTypeOfValue(x: Value, t: String) =
+  //   if(x.typeStr == t) x else error("invalid type")
   // def checkTypeOfCont(x: KValue) =
   //   if(x.typeStr == "KValue") x else error("invalid type")
 
