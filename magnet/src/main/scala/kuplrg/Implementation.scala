@@ -136,7 +136,7 @@ object Implementation extends Template {
               if(argSize >= params.length)
                 valList.slice(argSize - params.length, argSize) 
               else List.fill(params.length - argSize)(UndefV) ::: valList
-            State(IDef(params, fenv, body) :: Nil, callStack, callHandler, memory)
+            State(IDef(params, fenv, EReturn(body)) :: Nil, callStack, callHandler, memory)
           case GenV(params, body, fenv) =>
             val addr: Addr = malloc(memory)
             val genStack: Stack = 
@@ -156,7 +156,7 @@ object Implementation extends Template {
     case State(INext :: cont, v :: IterV(a) :: stack, handler, memory)        =>
       val nextCont: KValue = KValue(cont, IterV(a) :: stack, handler)
       val ContV(KValue(aCont, aStack, aHandler)) = lookup(memory, a)
-      val nextHandler: Handler = handler + (Yield -> nextCont) + (Return -> nextCont)
+      val nextHandler: Handler = aHandler + (Yield -> nextCont) + (Return -> nextCont)
       State(aCont, v :: aStack, nextHandler, memory)
     case State(IYield :: _, v1 :: BoolV(b) :: v2 :: _, handler, memory)       => // boolV(b)가 필요한가?
       val KValue(yCont, IterV(a) :: yStack, yHandler) = lookup(handler, Yield) // IterV(a)인지도 check해야하는가?
@@ -168,7 +168,10 @@ object Implementation extends Template {
   // ---------------------------------------------------------------------------
   // Problem #2
   // ---------------------------------------------------------------------------
-  def bodyOfSquares: String = "not implement"
+  def bodyOfSquares: String = """
+    var n = from;
+    while (n <= to) yield n*n++;
+  """
 
   // ---------------------------------------------------------------------------
   // Helper functions

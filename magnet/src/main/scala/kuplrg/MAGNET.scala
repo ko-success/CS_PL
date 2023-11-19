@@ -198,7 +198,7 @@ enum Value:
     case CloV(_, _, _) => s"<function>"
     case ContV(kv)      => s"<continuation_${(kv.cont.map(_.str) :+ "[]").mkString(" :: ")}>"
     case GenV(_, _, _) => s"<generator>"
-    case IterV(a)      => s"<iterator_${a}>"
+    case IterV(a)      => s"<iterator>" //s"<iterator_${a}>"
     case ResultV(v, b) => s"{ value: ${v.str}, done: $b }"
 
   def typeStr: String = this match

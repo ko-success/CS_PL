@@ -135,7 +135,7 @@ class Spec extends SpecBase {
     iter.next();
     iter.next();
   """
-  test(eval(expr4, debug = true), "{ value: 2, done: false }", weight = 5)
+  test(eval(expr4), "{ value: 2, done: false }", weight = 5)
 
   val expr5 = """
     function f() { 42; }
