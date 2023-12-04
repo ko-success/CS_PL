@@ -4,11 +4,13 @@ trait Template {
 
   def eval(str: String): String =
     val expr = Expr(str)
-    val ty = typeCheck(expr, TypeEnv()).str
-    val result =
-      try interp(expr, Map.empty).str
-      catch case e: PLError => "ERROR"
-    s"$result: $ty"
+    // val ty = typeCheck(expr, TypeEnv()).str
+    // val result =
+    //   try interp(expr, Map.empty).str
+    //   catch case e: PLError => "ERROR"
+    // s"$result: $ty"
+    val v = interp(expr, Map.empty).str
+    v
 
   def typeCheck(expr: Expr, tenv: TypeEnv): Type
 
