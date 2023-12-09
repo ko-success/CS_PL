@@ -11,25 +11,42 @@ object Implementation extends Template {
   
   def lookup(x: String, tenv: TypeEnv) = tenv.getOrElse(x, error(s"free identifier: $x"))
   
-  def subtypeRelation(lty: Type, rty: Type): Unit = (lty, rty) match
-    case t            => t//error("subsumption fail")
-    // case ArrowT(paramTy, retTy) =>
+  def errorIfF(b: Boolean) = if(!b) error("type error")
+  
+  def subtypeRelation(lty: Type, rty: Type): Boolean = (lty, rty) match
+    case (BotT, _)  => true
+    case (_, TopT)  => true
+    case (ArrowT(lpty, lrty), ArrowT(rpty, rrty)) => 
+      errorIfF(subtypeRelation(rpty, lpty))
+      errorIfF(subtypeRelation(lrty, rrty))
+      true
+    // RecordT(fields: Map[String, Type])
+    case (RecordT(lfields), RecordT(rfields)) => 
+      val rule1: Boolean = rfields.keySet.subsetOf(lfields.keySet)
+      // rule 3(permutation)은 sort로 해결
+      val lfiltered: Map[String, Type] = lfields.filterKeys(rfields.contains).toMap
+      val lsorted: List[(String, Type)] = lfiltered.toSeq.sortBy(_._1).toList
+      val rsorted: List[(String, Type)] = rfields.toSeq.sortBy(_._1).toList
+      lazy val rule2: Boolean = lsorted.zip(rsorted).foldLeft(true){ case (b, (lf, rf)) => b && (lf._1 == rf._1) && (subtypeRelation(lf._2, rf._2))}
+      rule1 && rule2
+    case (l, r) => l == r
+    case t            => error(s"subtype relation error")
 
   def typeCheck(expr: Expr, tenv: TypeEnv): Type = expr match
     case Num(number: BigInt)                      => NumT
     case Add(left: Expr, right: Expr)             => 
-      subtypeRelation(typeCheck(left, tenv), NumT)
-      subtypeRelation(typeCheck(right, tenv), NumT)
+      errorIfF(subtypeRelation(typeCheck(left, tenv), NumT))
+      errorIfF(subtypeRelation(typeCheck(right, tenv), NumT))
       NumT
     case Mul(left: Expr, right: Expr)             =>
-      subtypeRelation(typeCheck(left, tenv), NumT)
-      subtypeRelation(typeCheck(right, tenv), NumT)
+      errorIfF(subtypeRelation(typeCheck(left, tenv), NumT))
+      errorIfF(subtypeRelation(typeCheck(right, tenv), NumT))
       NumT
     case Val(name: String,
       tyOpt: Option[Type], 
       init: Expr, body: Expr)                     =>
       val initTy = typeCheck(init, tenv)
-      tyOpt.map(givenTy => subtypeRelation(initTy, givenTy))
+      tyOpt.map(givenTy => errorIfF(subtypeRelation(initTy, givenTy)))
       val nameTy = tyOpt.getOrElse(initTy)
       typeCheck(body, tenv + (name -> nameTy))
     case Id(name: String)                         => lookup(name, tenv)
@@ -39,7 +56,7 @@ object Implementation extends Template {
     case App(fun: Expr, arg: Expr)                => typeCheck(fun, tenv) match
       case ArrowT(paramTy, retTy) => 
         val argTy = typeCheck(arg, tenv)
-        subtypeRelation(argTy, paramTy)
+        errorIfF(subtypeRelation(argTy, paramTy))
         retTy
       case t                      => error(s"not a function type: ${t.str}")
     case Record(fields: List[(String, Expr)])     => 
