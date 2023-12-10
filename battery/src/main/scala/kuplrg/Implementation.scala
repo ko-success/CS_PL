@@ -8,43 +8,44 @@ object Implementation extends Template {
   import Type.*
   import TypeInfo.*
 
+
   def typeCheck(expr: Expr, tenv: TypeEnv): Type = expr match
-    // unit
-    case EUnit                                        =>
-    // numbers
-    case ENum(number: BigInt)                         =>
-    // booleans
-    case EBool(bool: Boolean)                         =>
-    // strings
-    case EStr(string: String)                         =>
-    // identifier lookups
-    case EId(name: String)                            =>
-    // addition
-    case EAdd(left: Expr, right: Expr)                =>
-    // multiplication
-    case EMul(left: Expr, right: Expr)                =>
-    // division
-    case EDiv(left: Expr, right: Expr)                =>
-    // modulo
-    case EMod(left: Expr, right: Expr)                =>  
-    // string concatenation
-    case EConcat(left: Expr, right: Expr)             =>
-    // equal-to
+    case EUnit                                        => UnitT
+    case ENum(number: BigInt)                         => NumT
+    case EBool(bool: Boolean)                         => BoolT
+    case EStr(string: String)                         => StrT
+    case EId(name: String)                            => lookupVar(name, tenv)
+    case EAdd(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
+    case EMul(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
+    case EDiv(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
+    case EMod(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
+    case EConcat(left: Expr, right: Expr)             => sameThisType(left, right, tenv, StrT, StrT)
     case EEq(left: Expr, right: Expr)                 =>
-    // less-than
-    case ELt(left: Expr, right: Expr)                 =>
-    // sequence
+      isSame(typeCheck(left, tenv), typeCheck(right, tenv))
+      BoolT
+    case ELt(left: Expr, right: Expr)                 => sameThisType(left, right, tenv, NumT, BoolT)
     case ESeq(left: Expr, right: Expr)                =>
-    // conditional
+      val lty: Type = typeCheck(left, tenv)
+      typeCheck(right, tenv)
     case EIf(cond: Expr, 
       thenExpr: Expr, 
       elseExpr: Expr)                                 =>
-    // immutable variable definitions
+      mustSame(typeCheck(cond, tenv), BoolT)
+      errorIfF(isSame(typeCheck(thenExpr, tenv), typeCheck(elseExpr, tenv)), "not equivalent type")
+      typeCheck(thenExpr, tenv)
     case EVal(x: String, 
       tyOpt: Option[Type], 
-      expr: Expr, body: Expr)                         =>
-    // anonymous (lambda) functions
+      expr: Expr, body: Expr)                         => tyOpt match
+      case Some(initTy) => 
+        val initExprTy: Type = typeCheck(expr, tenv)
+        errorIfF(isSame(initExprTy, initTy), "return types are not equivalent")
+        typeCheck(body, tenv + (x -> initTy))
+      case None         => typeCheck(body, tenv + (x -> typeCheck(expr, tenv)))
     case EFun(params: List[Param], body: Expr)        =>
+      val paramTys: List[Type] = params.map(mustValid(_._2, tenv))
+      // addvars 이게 맞나?
+      val finTEnv: TypeEnv = tenv.addVars(params)
+      ArrowT(paramTys, typeCheck(body, finTEnv))
     // function applications
     case EApp(fun: Expr, 
       tys: List[Type], args: List[Expr])              =>
@@ -52,9 +53,9 @@ object Implementation extends Template {
     case ERecDefs(defs: List[RecDef], body: Expr)     =>
     // pattern matching
     case EMatch(expr: Expr, mcases: List[MatchCase])  =>
-    // exit
     case EExit(ty: Type, expr: Expr)                  =>
-    // error in type checking
+      mustSame(typeCheck(expr, tenv), StrT)
+      mustValid(ty, tenv)
     case _  => error(s"error in type checking")
 
   def typeEnvUpdate(recDef: RecDef, typeEnv: TypeEnv) = recDef match
@@ -78,6 +79,72 @@ object Implementation extends Template {
       tvars: List[String],
       varts: List[Variant],
     ) =>
+
+  def sameThisType(l: Expr, r: Expr, tenv: TypeEnv, checkTy: Type, retTy: Type): Type =
+    mustSame(typeCheck(l, tenv), checkTy)
+    mustSame(typeCheck(r, tenv), checkTy)
+    retTy
+
+  def mustSame(lty: Type, rty: Type): Unit =
+    if(lty != rty) error(s"type error: ${lty.str} != ${rty.str}")
+
+  def lookupVar(name: String, tenv: TypeEnv): Type =
+    tenv.vars.getOrElse(name, error(s"free identifier: $name"))
+  def lookupType(name: String, tenv: TypeEnv): TypeInfo =
+    tenv.tys.getOrElse(name, error(s"unknown type: $name"))
+    //if (!tenv.tys.contains(name)) error(s"unknown type: $name")
+
+  def arityCheck(l: BigInt, r: BigInt): BigInt =
+    if (l != r) error(s"not matching arity")
+    l
+  
+  def errorIfF(b: Boolean, msg: String): Nothing = if(!b) error(msg)
+
+  def mustValid(ty: Type, tenv: TypeEnv): Type = ty match
+    case UnitT                          => UnitT
+    case NumT                           => NumT
+    case BoolT                          => BoolT
+    case StrT                           => StrT
+    case IdT(name, tys)                 => lookupType(name) match
+      case TIVar                  => IdT(name)
+      case TIAdt(tvars, variants) => IdT(name, tys.map(mustValid(_, tenv)))
+    case ArrowT(tvars, paramTys, retTy) =>
+      val newTEnv: TypeEnv = tenv.addTypeVars(tvars)
+      ArrowT(tvars, paramTys.map(mustValid(_, newTEnv)), mustValid(retTy, tenv))
+
+  def isSame(lty: Type, rty: Type): Boolean = (lty, rty) match
+    case (UnitT, UnitT)                                       => true
+    case (NumT, NumT)                                         => true
+    case (BoolT, BoolT)                                       => true
+    case (StrT, StrT)                                         => true
+    case (IdT(lname, ltys), IdT(rname, rtys))                 => (ltys, rtys) match
+      // alpha인지 t인지 tenv에서 안찾고 알려면 이방법 뿐인건가?
+      case (Nil, Nil)               => lname == rname 
+      case (h1 :: t1, h2 :: t2)     => 
+        ltys.zip(rtys).foldLeft(ltys.length == rtys.length){ case (b, (lt, rt) => b && isSame(lt, rt)) }
+      case t                        => false
+    case (ArrowT(ltvs, lpts, lrty), ArrowT(rtvs, rpts, rrty)) =>
+      // return type에 대해서는 is same 안해봐도 되는건가?
+      val arityCheck: Boolean = (ltvs.length == rtvs.length) && (lpts.length == rpts.length)
+      lpts.zip(rpts).foldLeft(arityCheck){ case (b, (lt, rt) => b && isSame(lt, subst(rt, rtvs, ltvs.map(IdT(_))))) }
+    case _                                                    => false
+  
+  // 수정필요
+  def subst(bodyTy: Type, tyVar: List[String], insTy: List[Type]): Type = bodyTy match
+    case UnitT                          => UnitT
+    case NumT                           => NumT
+    case BoolT                          => BoolT
+    case StrT                           => StrT
+    case ArrowT(tvars, paramTys, retTy) => UnitT
+    case IdT(name, tys)                 => UnitT
+    // case ArrowT(pty, rty) => ArrowT(subst(pty, tyVar, insTy), subst(rty, tyVar, insTy))
+    // case VarT(name)       => 
+    //   if (tyVar == name) insTy
+    //   else VarT(name)
+    // case PolyT(name, ty)  => 
+    //   if (tyVar == name) PolyT(name, ty)
+    //   else PolyT(name, subst(ty, tyVar, insTy))
+
 
   val numAdd: (Value, Value) => Value = numBOp("+")(_ + _)
   val numMul: (Value, Value) => Value = numBOp("*")(_ * _)
@@ -110,8 +177,8 @@ object Implementation extends Template {
     case EIf(cond: Expr, 
       thenExpr: Expr, 
       elseExpr: Expr)                                 => interp(cond, env) match
-      case BoolV(true)  => interp(thenE, env)
-      case BoolV(false) => interp(elseE, env)
+      case BoolV(true)  => interp(thenExpr, env)
+      case BoolV(false) => interp(elseExpr, env)
       case _            => error(s"not a boolean")
     case EVal(x: String, 
       tyOpt: Option[Type], 
@@ -130,11 +197,13 @@ object Implementation extends Template {
         case v                  => error(s"not a function or variant: ${v.str}")
     // mutually recursive definitions
     case ERecDefs(defs: List[RecDef], body: Expr)     =>
-      lazy val finEnv: Env = defs.foldLeft(env){ case (cur, upd) => envUpdate()}
+    // 이거도대체 어떻게 짜는거지
+      // lazy val finEnv: Env = defs.foldLeft(env){ case (e, d) => envUpdate(d, e, finEnv)}
+      val finEnv = env
       interp(body, finEnv)
     case EMatch(expr: Expr, mcases: List[MatchCase])  => interp(expr, env) match
       case VariantV(name, values) => mcases.find(_.name == name) match
-          case Some(MatchCase(_, params, body)) =>
+        case Some(MatchCase(_, params, body)) =>
           arityCheck(params.length, values.length)
           interp(body, env ++ (params zip values))
         case None => error(s"no such case: $name")
@@ -152,7 +221,7 @@ object Implementation extends Template {
     case (NumV(l), NumV(r)) => BoolV(op(l, r))
     case (l, r) => error(s"invalid operation: ${l.str} $x ${r.str}")
 
-  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifer: $name"))
+  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifer: $x"))
 
   def arityCheck(l: BigInt, r: BigInt): BigInt =
     if (l != r) error(s"not matching arity")
@@ -189,4 +258,5 @@ object Implementation extends Template {
   def stringConcat(l: Value, r: Value): StrV = (l, r) match
     case (StrV(l), StrV(r)) => StrV(l + r)
     case _  => error(s"invalid operation")
+
 }
