@@ -247,11 +247,8 @@ object Implementation extends Template {
         case CloV(ps, b, fenv)  => interp(b, fenv() ++ ps.zip(argVals))
         case ConstrV(name)      => VariantV(name, argVals) 
         case v                  => error(s"not a function or variant: ${v.str}")
-    // mutually recursive definitions
     case ERecDefs(defs: List[RecDef], body: Expr)     =>
-    // 이거도대체 어떻게 짜는거지
-      // lazy val finEnv: Env = defs.foldLeft(env){ case (e, d) => envUpdate(d, e, finEnv)}
-      val finEnv = env
+      lazy val finEnv: Env = defs.foldLeft(env){ case (e, d) => envUpdate(d, e, () => finEnv)}
       interp(body, finEnv)
     case EMatch(expr: Expr, mcases: List[MatchCase])  => interp(expr, env) match
       case VariantV(name, values) => mcases.find(_.name == name) match
@@ -263,29 +260,17 @@ object Implementation extends Template {
     case EExit(ty: Type, expr: Expr)                  => error("exit")
     case v                                            => error(s"interpreter error: ${v.str}")
 
-  type BOp = (BigInt, BigInt) => BigInt
-  type NCOp = (BigInt, BigInt) => Boolean
-
-  def numBOp(x: String)(op: BOp)(l: Value, r: Value): Value = (l, r) match
-    case (NumV(l), NumV(r)) => NumV(op(l, r))
-    case (l, r) => error(s"invalid operation: ${l.str} $x ${r.str}")
-  def numCOp(x: String)(op: NCOp)(l: Value, r: Value): Value = (l, r) match
-    case (NumV(l), NumV(r)) => BoolV(op(l, r))
-    case (l, r) => error(s"invalid operation: ${l.str} $x ${r.str}")
-
-  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifer: $x"))
-
-  def envUpdate(recDef: RecDef, curEnv: Env, updateEnv: Env): Env = recDef match
+  def envUpdate(recDef: RecDef, curEnv: Env, updateEnv: (() => Env)): Env = recDef match
     case LazyVal(name: String, 
       ty: Type, 
       init: Expr,
-    ) => curEnv + (name -> ExprV(init, () => updateEnv))
+    ) => curEnv + (name -> ExprV(init, updateEnv))
     case RecFun(name: String,
       tvars: List[String],
       params: List[Param],
       rty: Type,
       body: Expr,
-    ) => curEnv + (name -> (CloV(params.map(_.name), body, () => updateEnv)))
+    ) => curEnv + (name -> (CloV(params.map(_.name), body, updateEnv)))
     case TypeDef(
       name: String,
       tvars: List[String],
@@ -293,6 +278,18 @@ object Implementation extends Template {
     ) => 
       val vartNames: List[String] = varts.map(_.name)
       curEnv ++ vartNames.zip(vartNames.map(ConstrV(_)))
+
+  type BOp = (BigInt, BigInt) => BigInt
+  type NCOp = (BigInt, BigInt) => Boolean
+
+  def numBOp(x: String)(op: BOp)(l: Value, r: Value): Value = (l, r) match
+    case (NumV(l), NumV(r)) => NumV(op(l, r))
+    case (l, r)             => error(s"invalid operation: ${l.str} $x ${r.str}")
+  def numCOp(x: String)(op: NCOp)(l: Value, r: Value): Value = (l, r) match
+    case (NumV(l), NumV(r)) => BoolV(op(l, r))
+    case (l, r)             => error(s"invalid operation: ${l.str} $x ${r.str}")
+
+  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifer: $x"))
 
   def eq(l: Value, r: Value): Boolean = (l, r) match
     case (UnitV, UnitV)         => true
@@ -305,6 +302,6 @@ object Implementation extends Template {
 
   def stringConcat(l: Value, r: Value): StrV = (l, r) match
     case (StrV(l), StrV(r)) => StrV(l + r)
-    case _  => error(s"invalid operation")
+    case _                  => error(s"invalid operation")
 
 }
