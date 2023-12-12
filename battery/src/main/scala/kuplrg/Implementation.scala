@@ -75,7 +75,6 @@ object Implementation extends Template {
     case EExit(ty: Type, expr: Expr)                  =>
       mustSame(typeCheck(expr, tenv), StrT)
       isValidType(ty, tenv)
-    case _  => error(s"error in type checking")
 
   def typeEnvUpdate(recDef: RecDef, tenv: TypeEnv): TypeEnv = recDef match
     case LazyVal(
@@ -157,15 +156,20 @@ object Implementation extends Template {
       lpts.zip(rpts).foldLeft(arityCheck){ case (b, (lt, rt)) => b && isEquivType(lt, subst(rt, rtvs, ltvs.map(IdT(_)))) }
     case _                                                    => false
   
-  // 수정필요
-  def subst(bodyTy: Type, tyVar: List[String], insTy: List[Type]): Type = bodyTy match
+  // tyVar.lengt == insTy.length는 사용할 때 검증하고 넣어주는데 또 확인할까
+  def subst(bodyTy: Type, tyVars: List[String], insTys: List[Type]): Type = bodyTy match
     case UnitT                          => UnitT
     case NumT                           => NumT
     case BoolT                          => BoolT
     case StrT                           => StrT
-    case ArrowT(tvars, paramTys, retTy) => UnitT
-    case IdT(name, tys)                 => UnitT
-    // case ArrowT(pty, rty) => ArrowT(subst(pty, tyVar, insTy), subst(rty, tyVar, insTy))
+    case ArrowT(tvars, paramTys, retTy) => ArrowT(tvars, paramTys.map(subst(_, tyVars, insTys)), subst(retTy, tyVars, insTys))
+    case IdT(name, tys)                 => 
+      val substMap: Map[String, Type] = tyVars.zip(insTys).toMap
+      tys match
+        case Nil    => substMap.getOrElse(name, IdT(name, Nil))
+        case h :: t => 
+          val freeIdMap: Map[String ,Type] =  substMap.filterKeys(key => !tys.contains(key)).toMap
+          IdT(name, tys)
     // case VarT(name)       => 
     //   if (tyVar == name) insTy
     //   else VarT(name)
@@ -183,7 +187,7 @@ object Implementation extends Template {
     retTy
   
   def lookupVar(name: String, tenv: TypeEnv): Type =
-    tenv.vars.getOrElse(name, error(s"free identifier: $name"))
+    tenv.vars.getOrElse(name, error(s"free identifier in Ty: $name"))
   def lookupType(name: String, tenv: TypeEnv): TypeInfo =
     tenv.tys.getOrElse(name, error(s"unknown type: $name"))
   def notContainTyVar(name: String, tenv: TypeEnv): String =
@@ -258,7 +262,6 @@ object Implementation extends Template {
         case None => error(s"no such case: $name")
       case v                      => error(s"not a variant: ${v.str}")
     case EExit(ty: Type, expr: Expr)                  => error("exit")
-    case v                                            => error(s"interpreter error: ${v.str}")
 
   def envUpdate(recDef: RecDef, curEnv: Env, updateEnv: (() => Env)): Env = recDef match
     case LazyVal(name: String, 
