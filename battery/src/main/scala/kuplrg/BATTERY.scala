@@ -170,6 +170,20 @@ case class TypeEnv(
     TypeEnv(vars, tys ++ xs.map(_ -> TIVar))
   def addTypeName(x: String, xs: List[String], ws: List[Variant]): TypeEnv =
     TypeEnv(vars, tys + (x -> TIAdt(xs, ws.map(w => w.name -> w.params).toMap)))
+
+  // utils for debug
+  def printTypeEnv: Unit = {
+    println("TENV")
+    println("- VARS")
+    for ((key, value) <- this.vars) {
+      println(s"  $key -> ${value.str}")
+    }
+    println("- TYPES")
+    for ((key, value) <- this.tys) {
+      println(s"  $key -> ${value.str}")
+    }
+    println("TENV-END")
+  }
 }
 
 // type information
@@ -178,6 +192,21 @@ enum TypeInfo:
   case TIVar
   // algebraic data type
   case TIAdt(tvars: List[String], variants: Map[String, List[Param]])
+
+  // the string form of a type
+  def str: String = this match
+    case TIVar  => "Type Variable"
+    case TIAdt(tvars: List[String], variants: Map[String, List[Param]]) => 
+      val variantsStr = variants.map { case (variantName, params) =>
+        s"""    - $variantName
+           |      ${params.map(_.str).mkString(", ")}""".stripMargin
+      }.mkString("\n")
+
+      s"""Algebraic Data Type
+         |  - Type Variables
+         |    ${tvars.mkString(", ")}
+         |  - Variants
+         |$variantsStr""".stripMargin
 
 // types
 enum Type:

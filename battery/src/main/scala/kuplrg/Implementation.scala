@@ -8,6 +8,7 @@ object Implementation extends Template {
   import Type.*
   import TypeInfo.*
 
+  // type checker
   def typeCheck(expr: Expr, tenv: TypeEnv): Type = expr match
     case EUnit                                        => UnitT
     case ENum(number: BigInt)                         => NumT
@@ -20,7 +21,7 @@ object Implementation extends Template {
     case EMod(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
     case EConcat(left: Expr, right: Expr)             => sameThisType(left, right, tenv, StrT, StrT)
     case EEq(left: Expr, right: Expr)                 =>
-      isEquivType(typeCheck(left, tenv), typeCheck(right, tenv))
+      errorIfF(isEquivType(typeCheck(left, tenv), typeCheck(right, tenv)), "can't check type equivalence")
       BoolT
     case ELt(left: Expr, right: Expr)                 => sameThisType(left, right, tenv, NumT, BoolT)
     case ESeq(left: Expr, right: Expr)                =>
@@ -42,15 +43,14 @@ object Implementation extends Template {
       case None         => typeCheck(body, tenv.addVar(x, typeCheck(expr, tenv)))
     case EFun(params: List[Param], body: Expr)        =>
       val paramTys: List[Type] = params.map{ case p => isValidType(p.ty, tenv) }
-      // addvars 이게 맞나?
-      val finTEnv: TypeEnv = tenv.addVars(params.map{case p => (p.name, p.ty)} )
+      val finTEnv: TypeEnv = tenv.addVars(params.map{ case p => (p.name, p.ty) })
       ArrowT(Nil, paramTys, typeCheck(body, finTEnv))
     case EApp(fun: Expr, 
       tys: List[Type], args: List[Expr])              => typeCheck(fun, tenv) match
       case ArrowT(tvars, paramTys, retTy) => 
         val argTys: List[Type] = args.map(typeCheck(_, tenv))
         val equivCheck: List[Boolean] = argTys.zip(paramTys).map{ case t => isEquivType(t._1, subst(t._2, tvars, tys.map(isValidType(_, tenv)))) }
-        errorIfF(equivCheck.foldLeft(paramTys.length == args.length){ case (l, r) => l && r}, "not equivalent types")
+        errorIfF(equivCheck.foldLeft(paramTys.length == args.length){ case (l, r) => l && r}, "not equivalent types in App")
         subst(retTy, tvars, tys)
       case _                              => error("not a Arrow Type")
     case ERecDefs(defs: List[RecDef], body: Expr)     =>
@@ -61,11 +61,12 @@ object Implementation extends Template {
       case IdT(name, tys) => lookupType(name, tenv) match
         case TIAdt(tvars, variants) =>
           val mcaseNames: List[String] = mcases.map(_.name)
+          if(mcaseNames.length != mcaseNames.toSet.size) error(s"duplicate case")
           val tenvs: List[TypeEnv] = mcases.map{
             case m => tenv.addVars(m.params.zip(variants.getOrElse(m.name, error(s"no matching variant")).map{ case p => subst(p.ty, tvars, tys) }))
           }
           val caseTys: List[Type] = mcases.map(_.body).zip(tenvs).map{ case tu => typeCheck(tu._1, tu._2) }
-          if(caseTys.sliding(2).toList.foldLeft(mcases.length == tenvs.length){
+          if(caseTys.sliding(2).toList.foldLeft(mcases.length == variants.size){
             case (b, List(t1, t2))  => b && isEquivType(t1, t2)
             case (b, _)             => b && true}
           ) caseTys.head
@@ -108,7 +109,7 @@ object Implementation extends Template {
       case TIAdt(tvars, variants) => IdT(name, tys.map(isValidType(_, tenv)))
     case ArrowT(tvars, paramTys, retTy) =>
       val newTEnv: TypeEnv = tenv.addTypeVars(tvars)
-      ArrowT(tvars, paramTys.map(isValidType(_, newTEnv)), isValidType(retTy, tenv))
+      ArrowT(tvars, paramTys.map(isValidType(_, newTEnv)), isValidType(retTy, newTEnv))
 
   def isValidDef(recDef: RecDef, tenv: TypeEnv): RecDef = recDef match
     case LazyVal(
@@ -125,11 +126,11 @@ object Implementation extends Template {
       rty: Type,
       body: Expr,
     ) =>
-      val finTEnv: TypeEnv = tenv.addTypeVars(tvars.map{
-        case name => notContainTyVar(name, tenv) })
-      errorIfF(isEquivType(rty, typeCheck(body, finTEnv)), "not equivalent types")
-      RecFun(name, tvars, params.map{ case p => Param(p.name, isValidType(p.ty, finTEnv)) }, isValidType(rty, finTEnv), body)
-    // polymorphic algebraic data type
+      val finTEnv: TypeEnv = tenv.addTypeVars(tvars.map{ case name => notContainTyVar(name, tenv) })
+      val paramTEnv: TypeEnv = finTEnv.addVars(params.map{ case p => (p.name, isValidType(p.ty, finTEnv)) })
+      val evalRty: Type = typeCheck(body, paramTEnv)
+      errorIfF(isEquivType(isValidType(rty, finTEnv), evalRty), "not equivalent types")
+      RecFun(name, tvars, params, rty, body)
     case TypeDef(
       name: String,
       tvars: List[String],
@@ -168,14 +169,8 @@ object Implementation extends Template {
       tys match
         case Nil    => substMap.getOrElse(name, IdT(name, Nil))
         case h :: t => 
-          val freeIdMap: Map[String ,Type] =  substMap.filterKeys(key => !tys.contains(key)).toMap
-          IdT(name, tys)
-    // case VarT(name)       => 
-    //   if (tyVar == name) insTy
-    //   else VarT(name)
-    // case PolyT(name, ty)  => 
-    //   if (tyVar == name) PolyT(name, ty)
-    //   else PolyT(name, subst(ty, tyVar, insTy))
+          val freeIdMap: Map[String ,Type] = substMap.view.filterKeys(key => !tys.contains(key)).toMap
+          IdT(name, tys.map{ case t => subst(t, freeIdMap.keys.toList, freeIdMap.values.toList)})
 
   // utils
   def mustSame(lty: Type, rty: Type): Unit =
@@ -200,8 +195,7 @@ object Implementation extends Template {
 
   def errorIfF(b: Boolean, msg: String): Unit = if(!b) error(msg)
 
-
-
+  // interpreter
   val numAdd: (Value, Value) => Value = numBOp("+")(_ + _)
   val numMul: (Value, Value) => Value = numBOp("*")(_ * _)
   val numDiv: (Value, Value) => Value = numBOp("/")(_ / _)
@@ -214,8 +208,8 @@ object Implementation extends Template {
     case EBool(bool: Boolean)                         => BoolV(bool)
     case EStr(string: String)                         => StrV(string)
     case EId(name: String)                            => lookup(name, env) match
-      case ExprV(e, env)  => error(s"no ExprV")
-      case v              => v
+      case ExprV(e, exEnv)  => interp(e, exEnv())
+      case v                => v
     case EAdd(left: Expr, right: Expr)                => numAdd(interp(left, env), interp(right, env))
     case EMul(left: Expr, right: Expr)                => numMul(interp(left, env), interp(right, env))
     case EDiv(left: Expr, right: Expr)                => interp(right, env) match
@@ -273,7 +267,7 @@ object Implementation extends Template {
       params: List[Param],
       rty: Type,
       body: Expr,
-    ) => curEnv + (name -> (CloV(params.map(_.name), body, updateEnv)))
+    ) => curEnv + (name -> CloV(params.map(_.name), body, updateEnv))
     case TypeDef(
       name: String,
       tvars: List[String],
@@ -292,7 +286,7 @@ object Implementation extends Template {
     case (NumV(l), NumV(r)) => BoolV(op(l, r))
     case (l, r)             => error(s"invalid operation: ${l.str} $x ${r.str}")
 
-  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifer: $x"))
+  def lookup(x: String, env: Env): Value = env.getOrElse(x, error(s"free identifier: $x"))
 
   def eq(l: Value, r: Value): Boolean = (l, r) match
     case (UnitV, UnitV)         => true
