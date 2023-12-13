@@ -14,7 +14,11 @@ object Implementation extends Template {
     case ENum(number: BigInt)                         => NumT
     case EBool(bool: Boolean)                         => BoolT
     case EStr(string: String)                         => StrT
-    case EId(name: String)                            => lookupVar(name, tenv)
+    case EId(name: String)                            => 
+      // val v = lookupVar(name, tenv)
+      // tenv.printTypeEnv
+      // println(s"${name} is : ${v}")
+      lookupVar(name, tenv)
     case EAdd(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
     case EMul(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
     case EDiv(left: Expr, right: Expr)                => sameThisType(left, right, tenv, NumT, NumT)
@@ -146,7 +150,6 @@ object Implementation extends Template {
     case (BoolT, BoolT)                                       => true
     case (StrT, StrT)                                         => true
     case (IdT(lname, ltys), IdT(rname, rtys))                 => (ltys, rtys) match
-      // alpha인지 t인지 tenv에서 안찾고 알려면 이방법 뿐인건가?
       case (Nil, Nil)               => lname == rname 
       case (h1 :: t1, h2 :: t2)     => 
         ltys.zip(rtys).foldLeft(ltys.length == rtys.length){ case (b, (lt, rt)) => b && isEquivType(lt, rt) }
@@ -157,20 +160,24 @@ object Implementation extends Template {
       lpts.zip(rpts).foldLeft(arityCheck){ case (b, (lt, rt)) => b && isEquivType(lt, subst(rt, rtvs, ltvs.map(IdT(_)))) }
     case _                                                    => false
   
-  // tyVar.lengt == insTy.length는 사용할 때 검증하고 넣어주는데 또 확인할까
   def subst(bodyTy: Type, tyVars: List[String], insTys: List[Type]): Type = bodyTy match
     case UnitT                          => UnitT
     case NumT                           => NumT
     case BoolT                          => BoolT
     case StrT                           => StrT
-    case ArrowT(tvars, paramTys, retTy) => ArrowT(tvars, paramTys.map(subst(_, tyVars, insTys)), subst(retTy, tyVars, insTys))
+    case ArrowT(tvars, paramTys, retTy) => 
+      val freeTyVars: Map[String, Type] = tyVars.zip(insTys).toMap -- tvars
+      ArrowT(tvars, paramTys.map(subst(_, freeTyVars.keys.toList, insTys)), subst(retTy, freeTyVars.keys.toList, insTys))
     case IdT(name, tys)                 => 
       val substMap: Map[String, Type] = tyVars.zip(insTys).toMap
       tys match
         case Nil    => substMap.getOrElse(name, IdT(name, Nil))
         case h :: t => 
-          val freeIdMap: Map[String ,Type] = substMap.view.filterKeys(key => !tys.contains(key)).toMap
-          IdT(name, tys.map{ case t => subst(t, freeIdMap.keys.toList, freeIdMap.values.toList)})
+          // val bindingTyVars: List[String] = tys.map{ 
+          //   case IdT(name, Nil)  => name
+          //   case _               => ""}
+          // val freeIdMap: Map[String, Type] = substMap -- bindingTyVars
+          IdT(name, tys.map{ case t => subst(t, substMap.keys.toList, substMap.values.toList)})
 
   // utils
   def mustSame(lty: Type, rty: Type): Unit =
